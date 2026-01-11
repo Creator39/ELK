@@ -1,11 +1,9 @@
 from cryptography import x509
-from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
+from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from dataclasses import dataclass
-from KeyManager import KeyManager
 from cryptography.hazmat.primitives import serialization
 
 
