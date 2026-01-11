@@ -1,18 +1,3 @@
-"""
-LAB 3 : Création d'un certificat serveur pour Elasticsearch
-============================================================
-
-Objectifs d'apprentissage :
-1. Créer un certificat SIGNÉ PAR LA CA (pas auto-signé)
-2. Ajouter des Subject Alternative Names (SAN)
-3. Utiliser ExtendedKeyUsage pour l'authentification serveur
-4. Vérifier la chaîne de confiance
-
-Durée estimée : 25 minutes
-
-Prérequis : Avoir complété le Lab 2 (CA créée)
-"""
-
 from cryptography import x509
 from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
 from cryptography.hazmat.primitives import hashes
@@ -22,8 +7,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List
 import ipaddress
-
-# Réutiliser les fonctions du Lab 2
 from Certificate_CA import create_name, save_certificate_pem, display_certificate_info
 from KeyManager import KeyManager
 
@@ -154,11 +137,6 @@ def create_server_certificate(
     
     return cert
 
-
-# ============================================================================
-# FONCTION : Charger un certificat depuis un fichier
-# ============================================================================
-
 def load_certificate_pem(filepath: Path) -> x509.Certificate:
     """
     Charge un certificat depuis un fichier PEM.
@@ -173,10 +151,6 @@ def load_certificate_pem(filepath: Path) -> x509.Certificate:
     print(f"✅ Certificat chargé")
     return cert
 
-
-# ============================================================================
-# EXERCICE PRATIQUE
-# ============================================================================
 
 def lab3_main():
     """
