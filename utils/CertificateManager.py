@@ -66,14 +66,12 @@ class CertManager:
             .not_valid_after(datetime.now(timezone.utc) + timedelta(days=validity_days))
         
             # EXTENSION 1 : BasicConstraints
-            # ca=False : Ce n'est pas une CA
             .add_extension(
                 x509.BasicConstraints(ca=False, path_length=None),
                 critical=True,
             )
         
             # EXTENSION 2 : KeyUsage
-            # Similaire au serveur mais adapté au client
             .add_extension(
                 x509.KeyUsage(
                     digital_signature=True,    # Peut signer des données
@@ -88,20 +86,12 @@ class CertManager:
                 ),
                 critical=True,
             )
-        
-            # EXTENSION 3 : ExtendedKeyUsage
-            # ⭐ DIFFÉRENCE CLÉ : CLIENT_AUTH au lieu de SERVER_AUTH
             .add_extension(
                 x509.ExtendedKeyUsage([
-                    ExtendedKeyUsageOID.CLIENT_AUTH,  # Authentification CLIENT
+                    ExtendedKeyUsageOID.CLIENT_AUTH,
                 ]),
                 critical=False,
             )
-        
-            # Note : Pas de SubjectAlternativeName pour un client
-            # (pas nécessaire car le client n'écoute pas de connexions)
-        
-            # 4. Signer avec la clé privée de la CA
             .sign(self.key_CA, hashes.SHA256())
         )
     
@@ -189,7 +179,6 @@ class CertManager:
         )
         
         # EXTENSION 2 : KeyUsage
-        # Différent de la CA : pas de key_cert_sign !
         .add_extension(
             x509.KeyUsage(
                 digital_signature=True,    # Peut signer des données
@@ -206,7 +195,6 @@ class CertManager:
         )
         
         # EXTENSION 3 : ExtendedKeyUsage
-        # Indique que ce certificat est pour l'authentification SERVEUR
         .add_extension(
             x509.ExtendedKeyUsage([
                 ExtendedKeyUsageOID.SERVER_AUTH,  # Authentification serveur
@@ -215,7 +203,6 @@ class CertManager:
         )
         
         # EXTENSION 4 : SubjectAlternativeName
-        # Liste tous les noms/IPs par lesquels le serveur peut être contacté
         .add_extension(
             x509.SubjectAlternativeName(san_list),
             critical=False,
@@ -286,17 +273,10 @@ class CertManager:
         -----END CERTIFICATE-----
         """
         print(f"💾 Sauvegarde du certificat dans {filepath}...")
-    
-        # Convertir en bytes PEM
+
         pem_bytes = cert.public_bytes(encoding=serialization.Encoding.PEM)
-    
-        # Créer le dossier si nécessaire
         filepath.parent.mkdir(parents=True, exist_ok=True)
-    
-        # Écrire le fichier
         filepath.write_bytes(pem_bytes)
-    
-        # Les certificats peuvent avoir des permissions 644 (publics)
         filepath.chmod(0o644)
     
         print(f"✅ Certificat sauvegardé")
@@ -402,15 +382,12 @@ class CertManager:
             .not_valid_after(datetime.now(timezone.utc) + timedelta(days=validity_days))
             
             # EXTENSION 1 : BasicConstraints
-            # ca=True signifie "ce certificat peut signer d'autres certificats"
-            # path_length=0 signifie "ne peut pas créer de CA intermédiaires"
             .add_extension(
                 x509.BasicConstraints(ca=True, path_length=0),
                 critical=True,  # Cette extension est critique (doit être comprise)
             )
             
             # EXTENSION 2 : KeyUsage
-            # Définit comment cette clé peut être utilisée
             .add_extension(
                 x509.KeyUsage(
                     digital_signature=True,   # Peut signer
@@ -426,8 +403,7 @@ class CertManager:
                 critical=True,
             )
             
-            # 3. Signer le certificat avec la clé privée
-            # hashes.SHA256() est l'algorithme de signature
+            # 3. Signer le certificat avec la clé privée de la CA
             .sign(private_key, hashes.SHA256())
         )
         
