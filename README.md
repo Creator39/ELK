@@ -1,61 +1,67 @@
-# 🔐 PKI pour Stack ELK (Elasticsearch, Logstash, Kibana)
+# 🔐 Stack ELK Sécurisée avec TLS/SSL
 
-Infrastructure de clés publiques (PKI) automatisée pour sécuriser les communications TLS/SSL dans une stack ELK.
-
-## 📋 Vue d'ensemble
-
-Ce projet génère automatiquement :
-- **1 Certificate Authority (CA)** auto-signée
-- **1 certificat serveur** pour Elasticsearch (avec SAN)
-- **2 certificats client** pour Logstash et Kibana
-
-## 🚀 Installation
-
-```bash
-# Installer les dépendances
-pip install cryptography pyyaml
-
-# Ou avec uv (recommandé)
-uv sync
-```
-
-## 📦 Utilisation
-
-### Génération des certificats
-
-```bash
-python main.py
-```
-
-### Configuration
-
-Modifier `certs_config.yaml` selon vos besoins.
-
-## ⚠️ SÉCURITÉ - ERREURS CORRIGÉES
-
-### ✅ Corrections appliquées :
-1. **Chargement de la CA** : La clé privée existante est maintenant chargée au lieu d'être régénérée
-2. **Organisation dynamique** : Utilise maintenant la config YAML au lieu d'être hardcodée
-3. **Validation automatique** : Vérification de la chaîne de confiance après génération
-
-### 🔴 À FAIRE AVANT PRODUCTION :
-
-> ⚠️ **CRITIQUE** : Les clés privées sont actuellement **NON CHIFFRÉES** !
-
-Consultez [SECURITY_RECOMMENDATIONS.md](SECURITY_RECOMMENDATIONS.md) pour :
-- Chiffrer les clés privées avec un mot de passe
-- Configuration ELK complète
-- Bonnes pratiques de sécurité
-- Checklist de déploiement
-
-## 🔍 Vérification
-
-```bash
-# Vérifier la chaîne de confiance
-openssl verify -CAfile certs_output/ca/ca_cert.pem certs_output/elasticsearch/elasticsearch_cert.pem
-```
+Stack complète **Elasticsearch + Logstash + Kibana** avec génération automatique de certificats TLS/SSL via Docker.
 
 ---
 
-**✅ Le code a été audité et les erreurs critiques ont été corrigées.**  
-**⚠️ Lisez [SECURITY_RECOMMENDATIONS.md](SECURITY_RECOMMENDATIONS.md) avant tout déploiement !**
+## 📋 Table des matières
+
+- [Vue d'ensemble](#-vue-densemble)
+- [Architecture](#-architecture)
+- [Prérequis](#-prérequis)
+- [Installation rapide](#-installation-rapide)
+- [Configuration](#-configuration)
+- [Utilisation](#-utilisation)
+- [Sécurité](#-sécurité)
+- [Dépannage](#-dépannage)
+
+---
+
+## 🎯 Vue d'ensemble
+
+Ce projet fournit une **stack ELK complète** avec :
+- ✅ **Génération automatique de certificats** TLS/SSL (CA + certificats serveur/client)
+- ✅ **Chiffrement bout-en-bout** de toutes les communications
+- ✅ **Docker Compose** pour un déploiement simple
+- ✅ **Health checks** automatiques
+- ✅ **Volumes persistants** pour les données
+- ✅ **Configuration via variables d'environnement**
+
+### Composants
+
+| Service | Version | Description | Port |
+|---------|---------|-------------|------|
+| **Elasticsearch** | 8.15.0 | Moteur de recherche et stockage | 9200, 9300 |
+| **Logstash** | 8.15.0 | Pipeline de traitement | 5000, 5044, 9600 |
+| **Kibana** | 8.15.0 | Interface web de visualisation | 5601 |
+| **Setup (init)** | Python 3.13 | Génération des certificats | - |
+
+---
+
+🔧 Configuration
+
+ELK/
+├── Docker_Compose_ELK.yml      # Orchestration Docker (encore en version template)
+├── Dockerfile                   # Image init pour certificats
+├── main.py                      # Script génération certificats
+├── generate_certs.py            # Logique de génération
+├── certs_config.yaml            # Config des certificats
+├── .env                         # Variables d'environnement (à créer) 
+├── .env.example                 # Template du .env (pas encore implemeter)
+├── utils/
+│   ├── CertificateManager.py    # Gestion certificats
+│   ├── KeyManager.py            # Gestion clés privées
+│   └── load_config.py           # Chargement config
+├── logstash/ (pas encore implemeter)
+│   ├── config/
+│   │   ├── logstash.yml         # Config principale
+│   │   └── pipelines.yml        # Config pipelines
+│   └── pipeline/
+│       └── logstash.conf        # Pipeline de données
+└── README.md                    # Ce fichier
+
+---
+
+📝 Personnalisation des certificats
+
+    Modifiez certs_config.yaml
