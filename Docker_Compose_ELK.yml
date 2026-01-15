@@ -1,0 +1,21 @@
+# An ELK Stack Docker Compose configuration
+
+networks:
+  elk:
+    driver: bridge
+
+volumes:
+  elasticsearch_certificates:
+    driver: local
+  elasticsearch_data:
+    driver: local
+  logstash_data:
+    driver: local
+  logstash_certificates:
+    driver: local
+  kibana_data:
+    driver: local
+  kibana_certificates:
+    driver: local
+
+  
