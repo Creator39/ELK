@@ -13,4 +13,4 @@ COPY ./utils utils/
 COPY ./generate_certs.py .
 COPY ./main.py .
 
-CMD ["uv", "run", "main.py"]
+ENTRYPOINT ["uv", "run", "main.py"]
