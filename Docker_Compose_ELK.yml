@@ -1,21 +1,197 @@
-# An ELK Stack Docker Compose configuration
+# ============================================================
+# ELK Stack avec TLS/SSL
+# Architecture: Elasticsearch + Logstash + Kibana
+# Sécurité: Certificats TLS générés par init container
+# ============================================================
 
 networks:
   elk:
     driver: bridge
+    name: elk-network
 
 volumes:
-  elasticsearch_certificates:
-    driver: local
   elasticsearch_data:
     driver: local
   logstash_data:
     driver: local
-  logstash_certificates:
-    driver: local
   kibana_data:
     driver: local
-  kibana_certificates:
+  certs_data:
     driver: local
 
+services:
+  # ============================================================
+  # INIT CONTAINER - Génération des certificats TLS/SSL
+  # ============================================================
+  setup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: elk-setup
+    volumes:
+      - certs_data:/app/certs_output
+    command: python main.py
+    networks:
+      - elk
   
+  # ============================================================
+  # ELASTICSEARCH - Moteur de recherche et stockage
+  # ============================================================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: elasticsearch
+    hostname: elasticsearch
+    restart: unless-stopped
+    
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    
+    environment:
+      # Configuration du cluster
+      - node.name=es-node-01
+      - cluster.name=elk-cluster
+      - discovery.type=single-node
+      
+      # Mémoire JVM
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - bootstrap.memory_lock=true
+      
+      # Sécurité TLS/SSL
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=
+      - xpack.security.http.ssl.certificate=
+      - xpack.security.http.ssl.certificate_authorities=
+      - xpack.security.http.ssl.verification_mode=certificate
+      
+      # Transport SSL (communication inter-nodes)
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=
+      - xpack.security.transport.ssl.certificate=
+      - xpack.security.transport.ssl.certificate_authorities=
+      - xpack.security.transport.ssl.verification_mode=certificate
+      
+      # Mot de passe elastic (à changer en production)
+      - ELASTIC_PASSWORD=
+    
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+      - certs_data:/usr/share/elasticsearch/config/certs:ro
+    
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    
+    networks:
+      - elk
+    
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k -u elastic:changeme https://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ============================================================
+  # LOGSTASH - Pipeline de traitement des données
+  # ============================================================
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.15.0
+    container_name: logstash
+    hostname: logstash
+    restart: unless-stopped
+    
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+      elasticsearch:
+        condition: service_healthy
+    
+    environment:
+      - "LS_JAVA_OPTS=-Xms1g -Xmx1g"
+      - xpack.monitoring.enabled=true
+      - xpack.monitoring.elasticsearch.hosts=https://elasticsearch:9200
+      - xpack.monitoring.elasticsearch.username=elastic
+      - xpack.monitoring.elasticsearch.password=
+      - xpack.monitoring.elasticsearch.ssl.certificate_authority=
+    
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logstash/config:/usr/share/logstash/config:ro
+      - logstash_data:/usr/share/logstash/data
+      - certs_data:/usr/share/logstash/config/certs:ro
+    
+    ports:
+      - "5000:5000/tcp"    # Input TCP
+      - "5000:5000/udp"    # Input UDP
+      - "5044:5044"        # Beats input
+      - "9600:9600"        # Monitoring API
+
+    networks:
+      - elk
+    
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9600/_node/stats || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ============================================================
+  # KIBANA - Interface de visualisation
+  # ============================================================
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: kibana
+    hostname: kibana
+    restart: unless-stopped
+    
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+      elasticsearch:
+        condition: service_healthy
+    
+    environment:
+      # Configuration serveur
+      - SERVER_NAME=kibana
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=5601
+      
+      # Connexion Elasticsearch
+      - ELASTICSEARCH_HOSTS=https://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=
+      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=
+      
+      # SSL/TLS Kibana
+      - SERVER_SSL_ENABLED=false
+      
+      # Monitoring
+      - MONITORING_UI_CONTAINER_ELASTICSEARCH_ENABLED=true
+    
+    volumes:
+      - kibana_data:/usr/share/kibana/data
+      - certs_data:/usr/share/kibana/config/certs:ro
+    
+    ports:
+      - "5601:5601"
+    
+    networks:
+      - elk
+    
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
