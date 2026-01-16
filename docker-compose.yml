@@ -29,7 +29,7 @@ services:
       dockerfile: Dockerfile
     container_name: elk-setup
     volumes:
-      - certs_data:/app/certs_output
+      - ./certs_output:/app/certs_output
     command: python main.py
     networks:
       - elk
@@ -65,7 +65,7 @@ services:
       - xpack.security.http.ssl.certificate_authorities=
       - xpack.security.http.ssl.verification_mode=certificate
       
-      # Transport SSL (communication inter-nodes)
+      # Transport SSL (communication inter-nodes) (si multi-node)
       - xpack.security.transport.ssl.enabled=true
       - xpack.security.transport.ssl.key=
       - xpack.security.transport.ssl.certificate=
