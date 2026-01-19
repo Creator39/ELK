@@ -9,14 +9,20 @@ networks:
     driver: bridge
     name: elk-network
 
-volumes:
+volumes: # data volumes
   elasticsearch_data:
     driver: local
   logstash_data:
     driver: local
   kibana_data:
     driver: local
-  certs_data:
+
+  # certifcat volume to share generated certs
+  elasticsearch_cert:
+    driver: local
+  logstash_cert:
+    driver: local
+  kibana_cert:
     driver: local
 
 services:
@@ -28,8 +34,12 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: elk-setup
+    # Tourne en root pour pouvoir changer le propriétaire des fichiers
+    user: "0:0"
     volumes:
-      - ./certs_output:/app/certs_output
+      - elasticsearch_cert:/app/certs_output/elasticsearch
+      - logstash_cert:/app/certs_output/logstash
+      - kibana_cert:/app/certs_output/kibana
     command: python main.py
     networks:
       - elk
@@ -46,6 +56,8 @@ services:
     depends_on:
       setup:
         condition: service_completed_successfully
+    env_file:
+      - .env
     
     environment:
       # Configuration du cluster
@@ -55,37 +67,33 @@ services:
       
       # Mémoire JVM
       - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
-      - bootstrap.memory_lock=true
       
       # Sécurité TLS/SSL
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=true
-      - xpack.security.http.ssl.key=
-      - xpack.security.http.ssl.certificate=
-      - xpack.security.http.ssl.certificate_authorities=
+      - xpack.security.http.ssl.key=/usr/share/elasticsearch/config/certs/keys/elasticsearch_private.pem
+      - xpack.security.http.ssl.certificate=/usr/share/elasticsearch/config/certs/elasticsearch_cert.pem
+      - xpack.security.http.ssl.certificate_authorities=/usr/share/elasticsearch/config/certs/ca_cert.pem
       - xpack.security.http.ssl.verification_mode=certificate
-      
-      # Transport SSL (communication inter-nodes) (si multi-node)
+
+      # Transport TLS/SSL
       - xpack.security.transport.ssl.enabled=true
-      - xpack.security.transport.ssl.key=
-      - xpack.security.transport.ssl.certificate=
-      - xpack.security.transport.ssl.certificate_authorities=
+      - xpack.security.transport.ssl.key=/usr/share/elasticsearch/config/certs/keys/elasticsearch_private.pem
+      - xpack.security.transport.ssl.certificate=/usr/share/elasticsearch/config/certs/elasticsearch_cert.pem
+      - xpack.security.transport.ssl.certificate_authorities=/usr/share/elasticsearch/config/certs/ca_cert.pem
       - xpack.security.transport.ssl.verification_mode=certificate
       
       # Mot de passe elastic (à changer en production)
-      - ELASTIC_PASSWORD=
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
     
     ulimits:
-      memlock:
-        soft: -1
-        hard: -1
       nofile:
         soft: 65536
         hard: 65536
     
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
-      - certs_data:/usr/share/elasticsearch/config/certs:ro
+      - elasticsearch_cert:/usr/share/elasticsearch/config/certs:ro
     
     ports:
       - "9200:9200"
@@ -95,7 +103,7 @@ services:
       - elk
     
     healthcheck:
-      test: ["CMD-SHELL", "curl -k -u elastic:changeme https://localhost:9200/_cluster/health || exit 1"]
+      test: ["CMD-SHELL", "curl -k -u elastic:${ELASTIC_PASSWORD} https://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -115,21 +123,24 @@ services:
         condition: service_completed_successfully
       elasticsearch:
         condition: service_healthy
+    env_file:
+      - .env
     
     environment:
       - "LS_JAVA_OPTS=-Xms1g -Xmx1g"
       - xpack.monitoring.enabled=true
       - xpack.monitoring.elasticsearch.hosts=https://elasticsearch:9200
       - xpack.monitoring.elasticsearch.username=elastic
-      - xpack.monitoring.elasticsearch.password=
-      - xpack.monitoring.elasticsearch.ssl.certificate_authority=
+      - xpack.monitoring.elasticsearch.password=${ELASTIC_PASSWORD}
+      - xpack.monitoring.elasticsearch.ssl.enabled=true
+      - xpack.monitoring.elasticsearch.ssl.verification_mode=certificate
+      - xpack.monitoring.elasticsearch.ssl.certificate_authority=/usr/share/logstash/certs/ca_cert.pem
     
     volumes:
       - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
-      - ./logstash/config:/usr/share/logstash/config:ro
+      - ./logstash/config:/usr/share/logstash/config
       - logstash_data:/usr/share/logstash/data
-      - certs_data:/usr/share/logstash/config/certs:ro
-    
+      - logstash_cert:/usr/share/logstash/certs:ro 
     ports:
       - "5000:5000/tcp"    # Input TCP
       - "5000:5000/udp"    # Input UDP
@@ -160,6 +171,8 @@ services:
         condition: service_completed_successfully
       elasticsearch:
         condition: service_healthy
+    env_file:
+      - .env
     
     environment:
       # Configuration serveur
@@ -170,8 +183,9 @@ services:
       # Connexion Elasticsearch
       - ELASTICSEARCH_HOSTS=https://elasticsearch:9200
       - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=
-      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=
+      - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
+      - ELASTICSEARCH_SSL_VERIFICATIONMODE=certificate
+      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=/usr/share/kibana/config/certs/ca_cert.pem
       
       # SSL/TLS Kibana
       - SERVER_SSL_ENABLED=false
@@ -181,7 +195,7 @@ services:
     
     volumes:
       - kibana_data:/usr/share/kibana/data
-      - certs_data:/usr/share/kibana/config/certs:ro
+      - kibana_cert:/usr/share/kibana/config/certs:ro
     
     ports:
       - "5601:5601"
