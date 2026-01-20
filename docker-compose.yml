@@ -18,6 +18,8 @@ volumes: # data volumes
     driver: local
 
   # certifcat volume to share generated certs
+  ca_cert:
+    driver: local
   elasticsearch_cert:
     driver: local
   logstash_cert:
@@ -37,10 +39,10 @@ services:
     # Tourne en root pour pouvoir changer le propriétaire des fichiers
     user: "0:0"
     volumes:
+      - ca_cert:/app/certs_output/ca
       - elasticsearch_cert:/app/certs_output/elasticsearch
       - logstash_cert:/app/certs_output/logstash
       - kibana_cert:/app/certs_output/kibana
-    command: python main.py
     networks:
       - elk
   
@@ -83,8 +85,9 @@ services:
       - xpack.security.transport.ssl.certificate_authorities=/usr/share/elasticsearch/config/certs/ca_cert.pem
       - xpack.security.transport.ssl.verification_mode=certificate
       
-      # Mot de passe elastic (à changer en production)
+      # Mots de passe (à changer en production)
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - KIBANA_SYSTEM_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
     
     ulimits:
       nofile:
@@ -108,6 +111,29 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+
+  # ============================================================
+  # INIT USERS - Configuration des utilisateurs Elasticsearch
+  # ============================================================
+  init-users:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: elk-init-users
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    env_file:
+      - .env
+    command: >
+      bash -c '
+      echo "⏳ Configuration du mot de passe kibana_system..." &&
+      curl -k -X POST "https://elasticsearch:9200/_security/user/kibana_system/_password" \
+        -u "elastic:${ELASTIC_PASSWORD}" \
+        -H "Content-Type: application/json" \
+        -d "{\"password\": \"${KIBANA_SYSTEM_PASSWORD}\"}" &&
+      echo "✅ Mot de passe configuré !"
+      '
+    networks:
+      - elk
 
   # ============================================================
   # LOGSTASH - Pipeline de traitement des données
@@ -169,6 +195,8 @@ services:
     depends_on:
       setup:
         condition: service_completed_successfully
+      init-users:
+        condition: service_completed_successfully
       elasticsearch:
         condition: service_healthy
     env_file:
@@ -186,9 +214,19 @@ services:
       - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
       - ELASTICSEARCH_SSL_VERIFICATIONMODE=certificate
       - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=/usr/share/kibana/config/certs/ca_cert.pem
+      - ELASTICSEARCH_SSL_CERTIFICATE=/usr/share/kibana/config/certs/kibana_cert.pem
+      - ELASTICSEARCH_SSL_KEY=/usr/share/kibana/config/certs/keys/kibana_private.pem
       
-      # SSL/TLS Kibana
-      - SERVER_SSL_ENABLED=false
+      # SSL/TLS Kibana - Interface Web HTTPS
+      - SERVER_SSL_ENABLED=true
+      - SERVER_SSL_CERTIFICATE=/usr/share/kibana/config/certs/kibana_cert.pem
+      - SERVER_SSL_KEY=/usr/share/kibana/config/certs/keys/kibana_private.pem
+      - SERVER_SSL_CERTIFICATEAUTHORITIES=/usr/share/kibana/config/certs/ca_cert.pem
+      
+      # Clés de chiffrement Kibana
+      - XPACK_SECURITY_ENCRYPTIONKEY=${KIBANA_ENCRYPTION_KEY}
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=${KIBANA_SAVED_OBJECTS_ENCRYPTION_KEY}
+      - XPACK_REPORTING_ENCRYPTIONKEY=${KIBANA_REPORTING_ENCRYPTION_KEY}
       
       # Monitoring
       - MONITORING_UI_CONTAINER_ELASTICSEARCH_ENABLED=true
@@ -204,7 +242,7 @@ services:
       - elk
     
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      test: ["CMD-SHELL", "curl -k -f https://localhost:5601/api/status || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
