@@ -27,13 +27,17 @@ volumes: # data volumes
   kibana_cert:
     driver: local
 
+  # retention policy can be added here if needed
+  elasticsearch_snapshots:
+    driver: local
+
 services:
   # ============================================================
   # INIT CONTAINER - Génération des certificats TLS/SSL
   # ============================================================
   setup:
     build:
-      context: .
+      context: ./setup-certs
       dockerfile: Dockerfile
     container_name: elk-setup
     # Tourne en root pour pouvoir changer le propriétaire des fichiers
@@ -45,18 +49,54 @@ services:
       - kibana_cert:/app/certs_output/kibana
     networks:
       - elk
-  
+
+  # ============================================================
+  # ELASTICSEARCH - snapshot init container
+  # ============================================================
+  setup-snapshot-permissions:
+    build:
+      context: ./setup-snapshot-permissions
+      dockerfile: Dockerfile
+    user: "0:0"
+    container_name: elk-setup-snapshot-permissions
+    env_file:
+      - .env
+    volumes:
+      - elasticsearch_snapshots:/app/snapshots_output
+    networks:
+      - elk
+
+  # ===========================================================
+  # ELASTICSEARCH - Politique de l'ILM (index lifecycle management)
+  # ===========================================================
+  setup-snapshot-ilm:
+    build:
+      context: ./setup-snapshot-ilm
+      dockerfile: Dockerfile
+    container_name: elk-setup-snapshot-ilm
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ca_cert:/app/certs:ro
+    env_file:
+      - .env
+    networks:
+      - elk
+
   # ============================================================
   # ELASTICSEARCH - Moteur de recherche et stockage
   # ============================================================
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.1
     container_name: elasticsearch
     hostname: elasticsearch
     restart: unless-stopped
     
     depends_on:
       setup:
+        condition: service_completed_successfully
+      setup-snapshot-permissions:
         condition: service_completed_successfully
     env_file:
       - .env
@@ -88,6 +128,7 @@ services:
       # Mots de passe (à changer en production)
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - KIBANA_SYSTEM_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
+      - path.repo=/usr/share/elasticsearch/snapshots
     
     ulimits:
       nofile:
@@ -97,6 +138,7 @@ services:
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
       - elasticsearch_cert:/usr/share/elasticsearch/config/certs:ro
+      - elasticsearch_snapshots:/usr/share/elasticsearch/snapshots
     
     ports:
       - "9200:9200"
@@ -116,7 +158,7 @@ services:
   # INIT USERS - Configuration des utilisateurs Elasticsearch
   # ============================================================
   init-users:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.1
     container_name: elk-init-users
     depends_on:
       elasticsearch:
@@ -139,7 +181,7 @@ services:
   # LOGSTASH - Pipeline de traitement des données
   # ============================================================
   logstash:
-    image: docker.elastic.co/logstash/logstash:8.15.0
+    image: docker.elastic.co/logstash/logstash:9.2.1
     container_name: logstash
     hostname: logstash
     restart: unless-stopped
@@ -187,7 +229,7 @@ services:
   # KIBANA - Interface de visualisation
   # ============================================================
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.15.0
+    image: docker.elastic.co/kibana/kibana:9.2.1
     container_name: kibana
     hostname: kibana
     restart: unless-stopped

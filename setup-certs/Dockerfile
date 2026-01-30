@@ -1,9 +1,9 @@
-FROM ghcr.io/astral-sh/uv:python3.12-alpine
+FROM ghcr.io/astral-sh/uv:python3.14-alpine
 
 # copie et installe les dépendances
 WORKDIR /app
 RUN mkdir utils
-COPY ./pyproject.toml .
+COPY pyproject.toml .
 RUN uv sync --no-dev
 RUN apk add --no-cache openssl
 

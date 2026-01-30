@@ -1,4 +1,4 @@
-http.host: 0.0.0.0
+api.http.host: 0.0.0.0
 xpack.monitoring.elasticsearch.hosts: ${xpack.monitoring.elasticsearch.hosts}
 xpack.monitoring.elasticsearch.password: ${xpack.monitoring.elasticsearch.password}
 xpack.monitoring.elasticsearch.ssl.certificate_authority: ${xpack.monitoring.elasticsearch.ssl.certificate_authority}
